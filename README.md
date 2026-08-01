@@ -32,7 +32,7 @@ From FITS to lightcurves : least-squares fitting of star positions and gaussian 
 
 ---
 
-## Mathematical Model
+## Parameters structure
 
 For a sequence with N images and M stars, it optimizes:
 
