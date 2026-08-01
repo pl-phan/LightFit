@@ -40,9 +40,10 @@ _AUTO_STARS = {
 # ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ----
 # [1] IMPORT DATA
 
-def import_data() -> Tuple[np.ndarray, List[str]]:
+def import_data() -> Tuple[np.ndarray, pd.DataFrame]:
     """
-    Imports FITS frames or loads previous data
+    Imports FITS frames or loads previous cached data.
+    Extracts 'DATE-OBS', 'DATE-AVG', and 'DATE-END' timestamps.
     """
     instr = '[1] --> Enter .FITS files directory'
     instr += '\n\t(leave blank to load previous data):\n'
@@ -51,28 +52,39 @@ def import_data() -> Tuple[np.ndarray, List[str]]:
     else:
         fits_path = input(instr).strip()
 
-    # If previous data
+    # If loading previous cached data
     if not fits_path:
         if os.path.exists('frames.npy') and os.path.exists('times.csv'):
             print('[1] ... Loading data from frames.npy and times.csv...')
             frames = np.load('frames.npy')
-            times = pd.read_csv('times.csv').times.tolist()
+            times = pd.read_csv('times.csv')
             return frames, times
         raise FileNotFoundError('Previous data not found (frames.npy, times.csv)')
 
-    # If new data
+    # If reading new FITS directory
     fits_files = [f for f in Path(fits_path).iterdir() if f.suffix.lower() == '.fits']
     if not fits_files:
         raise FileNotFoundError(f'No .fits files in directory: {fits_path}')
-    frames, times = [], []
-    for i, filepath in enumerate(sorted(fits_files)):
+
+    frames = []
+    time_records = []
+
+    for filepath in sorted(fits_files):
         with fits.open(filepath) as hdu:
-            times.append(hdu[0].header['DATE-AVG'])
+            header = hdu[0].header
+            time_records.append({
+                'DATE-OBS': header.get('DATE-OBS', ''),
+                'DATE-AVG': header.get('DATE-AVG', ''),
+                'DATE-END': header.get('DATE-END', '')
+            })
             frames.append(np.flip(hdu[0].data, axis=0).T)
+
     print('[1] ... Saving data in frames.npy and times.csv')
     frames = np.stack(frames)
+    times = pd.DataFrame(time_records)
+
     np.save('frames.npy', frames)
-    pd.Series(times, name='times').to_csv('times.csv', index=False)
+    times.to_csv('times.csv', index=False)
 
     return frames, times
 
@@ -186,7 +198,7 @@ def estimate_drift(
     pos_start, pos_end = select_star_for_drift(frames[0], frames[-1])
 
     N, W, H = frames.shape
-    t = pd.to_datetime(pd.Series(times, name='times'))
+    t = pd.to_datetime(times['DATE-AVG'])
     t = ((t - t.iloc[0]) / pd.to_timedelta('1s')).to_numpy().flatten()
     z = (t - t[0]) / (t[-1] - t[0]) if t[-1] != t[0] else np.zeros_like(t)
 
@@ -852,34 +864,51 @@ def fit_guided_stars(
 # [5] LIGHTCURVES EXTRACTION & SAVING
 
 def compute_lightcurves(
-    guide_stars: List[Star],
-    guided_stars: List[Star],
-    times: List[str]
+    stars: List[Star],
+    times: pd.DataFrame
 ) -> pd.DataFrame:
     """
     Computes integrated flux lightcurves for all stars.
     Flux = 2 * pi * A * s^2
+    Visualizes exposures as time intervals (DATE-OBS to DATE-END) with midpoint markers (DATE-AVG).
     """
-    all_stars = guide_stars + guided_stars
-    data = {'time': times}
+    data = times[['DATE-OBS', 'DATE-AVG', 'DATE-END']].copy()
+    colors = [
+        '#b5cf6b', '#17becf', '#bd9e39', '#ff7f0e', '#8c564b', '#636363', '#1f77b4', '#3182bd', '#9467bd', '#e377c2',
+        '#2ca02c', '#e6550d', '#756bb1', '#008080', '#31a354', '#ad494a', '#bcbd22', '#a55194', '#8c6d31', '#d62728'
+    ]
 
     fig = go.Figure()
-
-    for star in all_stars:
+    for idx, star in enumerate(stars):
         flux = 2. * pi * star.A * (star.s**2)
         data[star.name] = flux
-        fig.add_scatter(x=times, y=flux, mode='lines+markers', name=star.name)
+        color = colors[idx % len(colors)]
+
+        # Interleave OBS and END timestamps with flux to draw horizontal exposure segments
+        xs, ys = [], []
+        for t_obs, t_end, f in zip(times['DATE-OBS'], times['DATE-END'], flux):
+            xs.extend([t_obs, t_end])
+            ys.extend([f, f])
+        fig.add_scatter(
+            x=xs, y=ys, mode='lines', line=dict(color=color, width=1.5),
+            name=star.name, legendgroup=star.name, showlegend=True
+        )
+
+        # Exposure Midpoints (DATE-AVG)
+        fig.add_scatter(
+            x=times['DATE-AVG'], y=flux, mode='markers', marker=dict(color=color, size=5),
+            name=star.name, legendgroup=star.name, showlegend=False
+        )
 
     fig.update_layout(
         title='Extracted Lightcurves',
         xaxis_title='Time',
-        yaxis_title='Integrated Flux (ADU)',
+        yaxis_title='Flux',
         template='plotly_white'
     )
-    # if not _AUTO:
     fig.show()
 
-    return pd.DataFrame(data)
+    return data
 
 
 def save_results(df_lightcurves: pd.DataFrame) -> None:
@@ -925,7 +954,8 @@ if __name__ == '__main__':
 
     # ==== ==== ==== ==== ==== ==== ==== ====
     print('\n[5] LIGHTCURVES')
-    lightcurves = compute_lightcurves(guide_stars, guided_stars, times)
+    all_stars = guide_stars + guided_stars
+    lightcurves = compute_lightcurves(all_stars, times)
     save_results(lightcurves)
 
     for star in guide_stars:
