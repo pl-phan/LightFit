@@ -2,6 +2,7 @@
 ## LightFit
 
 From FITS to lightcurves : least-squares fitting of star positions and gaussian PSF photometry
+
 Run with `python lightfit.py`
 
 ![Extracted Lightcurves](example-screenshots/lightcurves.png)
