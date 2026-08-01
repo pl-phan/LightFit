@@ -36,6 +36,17 @@ Run with `python lightfit.py`
 
 ---
 
+## Star PSF model
+
+* Each star's light profile is modeled as a Gaussian with a local background:
+
+$$I(x, y) = B + A \exp\left( -\frac{(x - x_c)^2 + (y - y_c)^2}{2s^2} \right)$$
+
+* For the **guide** stars, xc[i] and yc[i] are adjusted for all frames
+* For the **guided** stars, only xc[0] and yc[0] are adjusted, and the center positions in other frames follow the guide stars.
+
+---
+
 ## Parameters structure
 
 For a sequence with N images and M stars, it optimizes:
