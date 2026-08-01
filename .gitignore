@@ -1,0 +1,12 @@
+# Ignore contents of data/ and outputs/, keep the directories
+data/*
+!data/.gitkeep
+outputs/*
+!outputs/.gitkeep
+
+# Ignore cache files
+frames.npy
+times.csv
+
+# Python/Environment
+__pycache__/
