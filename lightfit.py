@@ -14,7 +14,7 @@ import plotly.graph_objects as go
 from scipy.sparse import csr_matrix
 
 
-_AUTO = True
+_AUTO = False
 _AUTO_FITS = './data/2026-07-20_35342_1997GZ24'
 _AUTO_STARS = {
     'REF': {
